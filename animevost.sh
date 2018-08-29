@@ -1,19 +1,33 @@
 #!/bin/bash
 
-_base_url="http://file.aniland.org/"
-_log_urls="used.log"
-_folder_name=""
-_give_me_name=()
+
+_720='_720.txt'
+_420='_420.txt'
+_base_url='http://file.aniland.org'
 _give_me_seri=()
 
 
-#
-# GET URL, GET NAME FOR DIR,
-# MAKE DIR, CHANGE DIR,
-# IF DIR NOT EMPTY,
-# COUNT DOWNLOADED SERIES,
-# DOWNLOAD NOT EXIST SERIES
-#
+function _rename_ids() {
+    #
+    # RENAME ID.MP4 TO NAME.MP4
+    #
+    idnx=1
+    for item in ${_give_me_seri[@]}
+    do
+        echo "$item.mp4"
+        rename "$item.mp4" "$idnx серия.mp4"
+        idnx=$[ $idnx + 1 ]
+    done
+}
+
+
+function _download_missing() {
+    #
+    # DOWNLOAD NOT EXIST 720P SERIES FROM 420P
+    #
+    echo "Missing series"
+    exit 1
+}
 
 
 function _check_exists() {
@@ -21,19 +35,40 @@ function _check_exists() {
     # MP4 FILES IN CURRENT DIR
     #
     series=($(find -maxdepth 1 -type f -name '*.mp4'))
-    echo "${#series[@]}"
+
+    if [ ${#series[@]} -eq 0 ]; then
+        _download_urls $_420
+    elif [ ${#series[@]} -eq ${#_give_me_seri} ]; then
+        _rename_ids
+    else
+        _download_missing
+    fi
 }
 
-# _check_exists
+
+function _download_urls() {
+    #
+    # DOWNLOAD PARALLEL 4 SERIES (-j 4)
+    # SRC: https://www.youtube.com/watch?v=sHpTywpb4_4
+    #
+    cat $1|parallel -j 4 wget {}
+
+    _check_exists
+}
 
 
-function _log_downloaded_urls() {
+function _generate_series_url() {
     #
-    # ANIME_NAME: ARRAY(IDS)
-    # $1 -> $anime_name
-    # $2 -> array of anime series
+    # DOWNLOAD SERIES LIKE PARALLEL
     #
-    echo "$1:$2" >> $_log_urls
+    sl=0 
+    for seri in "${_give_me_seri[@]}"
+    do
+        echo "$_base_url/720/$seri.mp4" >> "$_720"
+        echo "$_base_url/$seri.mp4" >> "$_420"
+    done
+
+    _download_urls $_720
 }
 
 
@@ -41,113 +76,53 @@ function _make_folder() {
     #
     # MAKE DIRECTORY LIKE ANIME NAME
     #
-    read -p "NAME: " anime_name 
+    read -p "NAME: " aname
+    aname=$(echo $aname|tr '"' '_'|tr ' ' '_')
+    echo "WE GAVE HIM: $aname"
 
-    if [ ! -d "$anime_name" ];
-    then
-        mkdir "$anime_name" && cd "$anime_name";
+    if [ ! -d $aname ]; then
+        mkdir $aname && cd $aname;
     else
-        cd "$anime_name"
+        cd $aname
     fi;
-    _folder_name="$anime_name"
-}
 
+    _fn=$aname
 
-function _rename_ids() {
-    #
-    # RENAME ID.MP4 TO NAME.MP4
-    #
-    idnx=0
-    for item in "${_give_me_seri[@]}"
-    do
-        echo "$item.mp4"
-        # rename "$item.mp4" "${_give_me_name[idnx]}.mp4"
-        echo "${_give_me_name[idnx]}.mp4"
-        idnx=$[ $idnx + 1 ]
-    done
-}
-
-
-function _download_series() {
-    #
-    # DOWNLOAD SERIES LIKE PARALLEL
-    #
-    sl=0 
-    for seri in $@
-    do
-        if [ $sl -lt 3 ]; then
-            wget "http://file.aniland.org/$seri.mp4" &
-            sl=$[ $sl + 1 ]
-        else
-            sleep 3
-            wget "http://file.aniland.org/$seri.mp4" &
-            sl=0
-        fi
-    done
+    _generate_series_url
 }
 
 
 function _split_data() {
     #
     # SPLIT DATA TO NAME AND ID
+    # data: 1\n seri\n ID\n ...
     #
-    #curl "$1" | grep -i "var data = {" > series.txt
-    #data=($(cat series.txt))
+    data=($(cat series.txt|grep '\w'|tr ':' ' '|tr ',' ' '|tr 'var data = {' ' '|tr '};' ' '|tr '"' ' '))
     indx=0
-    name=()
-    seri=()
-    ntim=0
     for item in "${data[@]}"
     do
-        if [ $indx -gt 2 ]; then
-            if [ $ntim -lt 1 ]; then
-                name+=("$item")
-                ntim=$[ $ntim + 1 ]
-            else
-                seri+=("$item")
-                ntim=0
-            fi
-        else
+        if [ $indx -eq 0 ]; then
             indx=$[ $indx + 1 ]
+        elif [ $indx -eq 1 ]; then
+            indx=$[ $indx + 1 ]
+        else
+            _give_me_seri+=("$item")
+            indx=0
         fi
     done
 
-    nmn=$(echo ${name[@]}|tr ':' ' '|tr "'" " "|tr '\{' " ")
-    _give_me_name=$(echo $nmn|awk "{print $1}")
-
-    srs=$(echo ${seri[@]}|tr ',' ' '|tr '}' " ")
-    _give_me_seri=$(echo $srs|awk "{print $1}")
+    _make_folder
 }
 
-# _split_data "$1"
-# _make_folder
-# _download_series
-# _rename_ids
-# _log_downloaded_urls
+
+function _get_data() {
+    #
+    # NEW FUNCTION BCZ IN VAR *_give_me_????* TRYING TO PRINT $1
+    #
+    curl $1 | grep -i "var data = {" > series.txt
+
+    _split_data
+}
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-# array = ()
-# array+=('fii')
-# 
-# array[0]
-# 
-# 
-# foo="hello"
-# foo="$foo word"
-# a
-# b
-# c=$a$b
-# 
+_get_data $1
