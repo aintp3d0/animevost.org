@@ -3,14 +3,15 @@
 
 # __author__ = 'kira@-築城院 真鍳'
 
-from os import mkdir, chdir, rename, getcwd #--------------------#
-from sys import argv, path #-------------------------------------#
+from os import mkdir, chdir, rename, remove, getcwd, environ #---#
+from sys import argv #-------------------------------------------#
 from bs4 import BeautifulSoup as bs #----------------------------#
 from glob import glob #------------------------------------------#
 from json import loads #-----------------------------------------#
 from time import sleep #-----------------------------------------#
 from wget import download #--------------------------------------#
-from os.path import exists #-------------------------------------#
+from shutil import move #----------------------------------------#
+from os.path import exists, join #-------------------------------#
 from selenium import webdriver #---------------------------------#
 from multiprocessing import Pool #-------------------------------#
 from selenium.webdriver.support import expected_conditions as EC #
@@ -49,15 +50,51 @@ class Animevost:
     def __init__(self):
         self.MP4 = ".mp4"
         self.AP4 = "*{}".format(self.MP4)
-        self.TAR = "var data = {" 
+        self.TAR = "var data = {"
+        self.gecko = join(getcwd(), "geckodriver")
+        self.egeck = exists(self.gecko)
         self.delay = 10
+        self.repeat = 0
         self.get_folder_name()
-        # executable path: let webdriver find *geckodriver*
-        # path.append(getcwd())
-        self.driver = webdriver.Firefox()
-        self.driver.get(argv[1])
+        self.run_driver()
         self.base_path = "html/body/div/div/div/div/div/div/span/div/div/div/*"
         self.iframe_path = "html/body/div/div/div/div/div/div/span/div/div/iframe"
+
+    def run_driver(self):
+        """
+        Ubuntu and Windows wants *geckodriver* in executable path
+        Kali finding *geckodriver* without executable path
+        """
+        try:
+            self.driver = webdriver.Firefox()
+        except Exception as e:
+            self.move_to_exec_path(e)
+        else:
+            self.driver.get(argv[1])
+
+    def move_to_exec_path(self, e):
+        """
+        I've tried to use $PATH variable with linux command:
+            system("mv geckodriver $(echo $PATH|cut -d':' -f1)")
+        Question was *how i can use this variable if i'm Windows user*:
+            https://stackoverflow.com/questions
+                /4760215/running-shell-command-from-python-and-capturing-the-output
+            but linux commands not working in Windows, after it i remember about *environ*
+        """
+        env = environ['PATH']
+        if self.egeck:
+            if ';' not in env:
+                move(self.gecko, env.split(':')[0])
+            else:
+                print("Move *{}* to executable path")
+        else:
+            print("gecko not in dir\n", e)
+        # don't play to snake
+        if self.repeat == 0:
+            self.run_driver()
+            self.repeat += 1
+        else:
+            exit(1)
 
     def get_multiprocessing(self, hd_or_sd):
         pool = Pool()
@@ -76,6 +113,11 @@ class Animevost:
         else:
             print('Please type folder name, it is important for *renaming series*')
             exit(1)
+
+    def remove_log(self):
+        elog = 'geckodriver.log'
+        if exists(elog):
+            remove(elog)
 
     def get_series_url(self):
         """
@@ -120,11 +162,23 @@ class Animevost:
                 print('E: ', e)
                 self.driver.close()
         self.driver.close()
+        # catch dublicate urls before downloading
+        # before debug script be sure that your browser not showing you 1 url in each series_button
+        db = [h.split('.')[-2].split('/')[-1] for h in hd]
+        # not tested
+        if len(db) != len(set(db)):
+            print('Group to download: length > {}, unique length > {}\n'.format(
+                    len(db), len(set(db))
+                ), db)
+            m = input('\nAny dublicates [y/n]: ').lower()
+            if m == 'y':
+                exit(1)
         # run multi download, if not hd then sd
         try:
             self.get_multiprocessing(hd)
         except Exception:
             self.get_multiprocessing(sd)
+        self.remove_log()
 
     def get_data(self, source):
         """
@@ -133,7 +187,6 @@ class Animevost:
         for script in source.find_all('script'):
             #     var data = {"1 серия":"1714835899", ... ,"12 серия":"214793857"};
             if self.TAR in script.text:
-                # READ AND MAKE DICT LIKE STRING
                 seri = script.text.split('\n')
                 for i in seri:
                     if self.TAR in i:
@@ -141,9 +194,7 @@ class Animevost:
                 seri = " ".join(seri.split()[3:])
                 seri = seri.replace(';', '')
                 seri = seri.replace(',}', '}')
-                # JSON ERROR IF SERI NAH LOOKS LIKE DICT
                 seri = loads(seri)
-                # NAME OF SERIES
                 nseri = {v:k for k, v in seri.items()}
                 return nseri
 

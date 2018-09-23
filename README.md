@@ -9,10 +9,12 @@
 #
 # ./animevost.sh [url]        |   download series with bash script
 #                             |   animevost.sh -> deadscr.sh
+#
+# Move *geckodriver* to executable path if you in Windows
+# I've tried to Automate it, but no results (nah tried harder)
 
 
 python3 animevost.py [url]    |   download series with python3 script
-
 
 Exp:
     python3 animevost.py http://animevost.org/tip/tv/239-danshi-koukousei-no-nichijou.html
