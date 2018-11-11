@@ -51,12 +51,17 @@ class Animevost:
         self.MP4 = ".mp4"
         self.AP4 = "*{}".format(self.MP4)
         self.TAR = "var data = {"
-        self.gecko = join(getcwd(), "geckodriver")
+        self.drn = "geckodriver.exe"
+        self.gecko = join(getcwd(), self.drn)
+        print('in init')
         self.egeck = exists(self.gecko)
         self.delay = 10
         self.repeat = 0
+        print('on getting folder')
         self.get_folder_name()
+        print('on running driver')
         self.run_driver()
+        print('done with init')
         self.base_path = "html/body/div/div/div/div/div/div/span/div/div/div/*"
         self.iframe_path = "html/body/div/div/div/div/div/div/span/div/div/iframe"
 
@@ -66,8 +71,10 @@ class Animevost:
         Kali finding *geckodriver* without executable path
         """
         try:
-            self.driver = webdriver.Firefox()
+            self.driver = webdriver.Firefox(environ['USERPROFILE'])
         except Exception as e:
+            print('in run_driver_exception')
+            sleep(1)
             self.move_to_exec_path(e)
         else:
             self.driver.get(argv[1])
@@ -82,14 +89,24 @@ class Animevost:
             but linux commands not working in Windows, after it i remember about *environ*
         """
         env = environ['PATH']
+        print('is gecko active:', self.egeck)
+        print('in dir:', getcwd())
+        sleep(1)
         if self.egeck:
             if ';' not in env:
                 move(self.gecko, env.split(':')[0])
             else:
-                print("Move *{}* to executable path")
+                # needs test, My windows slow as F
+                print('in move thing')
+                user = environ['USERPROFILE']
+                if not exists(join(user, self.drn)):
+                    print("Moving *geckodriver* to current User folder")
+                    move(self.gecko, user)
+                    print("Moved")
         else:
             print("gecko not in dir\n", e)
         # don't play to snake
+        print('repeating in', self.repeat)
         if self.repeat == 0:
             self.run_driver()
             self.repeat += 1
@@ -203,10 +220,13 @@ class Animevost:
         Get page_(site)_source and unblock series_url by clicking series_button
         """
         page_ready = False
+        print('in run')
         while not page_ready:
+            print('in while')
             try:
                 r = self.driver.page_source
             except Exception:
+                print('in get_page_source EXCEPTION')
                 sleep(1)
             else:
                 page_ready = True
