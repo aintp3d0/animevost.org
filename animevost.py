@@ -4,28 +4,30 @@
 # __author__ = 'kira@-築城院 真鍳'
 
 from os import mkdir, chdir, rename, remove, getcwd, environ #---#
-from sys import argv #-------------------------------------------#
+from sys import argv, platform #---------------------------------#
 from bs4 import BeautifulSoup as bs #----------------------------#
 from glob import glob #------------------------------------------#
 from json import loads #-----------------------------------------#
 from time import sleep #-----------------------------------------#
 from wget import download #--------------------------------------#
-from shutil import move #----------------------------------------#
+from shutil import move, rmtree #--------------------------------#
 from os.path import exists, join #-------------------------------#
 from selenium import webdriver #---------------------------------#
 from multiprocessing import Pool #-------------------------------#
 from selenium.webdriver.support import expected_conditions as EC #
+from selenium.common.exceptions import InvalidArgumentException ##
 from selenium.webdriver.support.ui import WebDriverWait #--------#
 
 
 """
 I've clicked download buttons before using selenium module
-After downloading all i wanted is rename downloaded series,
+After downloading all i wanted was rename downloaded series,
     it was easy to get data with *curl* (linux thing)
     >>> curl url | grep -i "var data = {" > series.txt
     ### Code in deadtest/deadscr.sh function *_get_data*
 
-If any problems with Selenium (or just download series like me) use line 164 and for loop
+If any problems with Selenium (or just download series like me)\
+    use func self.get_data to rename series_id to series_name
 """
 
 
@@ -51,73 +53,67 @@ class Animevost:
         self.MP4 = ".mp4"
         self.AP4 = "*{}".format(self.MP4)
         self.TAR = "var data = {"
-        self.drn = "geckodriver.exe"
-        self.gecko = join(getcwd(), self.drn)
-        print('in init')
-        self.egeck = exists(self.gecko)
+        self.dir = getcwd()
         self.delay = 10
-        self.repeat = 0
-        print('on getting folder')
-        self.get_folder_name()
-        print('on running driver')
-        self.run_driver()
-        print('done with init')
         self.base_path = "html/body/div/div/div/div/div/div/span/div/div/div/*"
         self.iframe_path = "html/body/div/div/div/div/div/div/span/div/div/iframe"
+        self.first_run()
+        self.get_folder_name()
+        self.run_driver()
+
+
+    def first_run(self):
+        """Remove nah needed driver
+
+        About downloaded drivers:
+            *geckodriver*       for linux64
+            *geckodriver.exe*   for win64
+
+        kk i'm running win32 in 64x machine (platform == win32)
+        """
+
+        def windows():
+            for each in env.split(';'):
+                if 'python3' in each.lower():
+                    return each
+
+        d = 'drivers'
+
+        if exists(d):
+            gecko = glob(f'{d}/*')
+            env = environ['PATH']
+
+            if gecko and len(gecko) == 2:
+                if 'win' in platform:
+                    # sorting thing ['geckodriver', 'geckodriver.exe']
+                    move(join(self.dir, gecko[1]), windows())
+                else:
+                    move(join(self.dir, gecko[0]), env.split(':')[0])
+
+            rmtree(d)
+
 
     def run_driver(self):
         """
         Ubuntu and Windows wants *geckodriver* in executable path
         Kali finding *geckodriver* without executable path
+        Here's one more thing, you need Firefox browser if wanna run Firefox geckodriver
         """
         try:
-            self.driver = webdriver.Firefox(environ['USERPROFILE'])
-        except Exception as e:
-            print('in run_driver_exception')
-            sleep(1)
-            self.move_to_exec_path(e)
-        else:
+            self.driver = webdriver.Firefox()
             self.driver.get(argv[1])
-
-    def move_to_exec_path(self, e):
-        """
-        I've tried to use $PATH variable with linux command:
-            system("mv geckodriver $(echo $PATH|cut -d':' -f1)")
-        Question was *how i can use this variable if i'm Windows user*:
-            https://stackoverflow.com/questions
-                /4760215/running-shell-command-from-python-and-capturing-the-output
-            but linux commands not working in Windows, after it i remember about *environ*
-        """
-        env = environ['PATH']
-        print('is gecko active:', self.egeck)
-        print('in dir:', getcwd())
-        sleep(1)
-        if self.egeck:
-            if ';' not in env:
-                move(self.gecko, env.split(':')[0])
-            else:
-                # needs test, My windows slow as F
-                print('in move thing')
-                user = environ['USERPROFILE']
-                if not exists(join(user, self.drn)):
-                    print("Moving *geckodriver* to current User folder")
-                    move(self.gecko, user)
-                    print("Moved")
-        else:
-            print("gecko not in dir\n", e)
-        # don't play to snake
-        print('repeating in', self.repeat)
-        if self.repeat == 0:
-            self.run_driver()
-            self.repeat += 1
-        else:
+        except InvalidArgumentException as e:
+            print('Error', e)
+            self.driver.close()
             exit(1)
+
 
     def get_multiprocessing(self, hd_or_sd):
         pool = Pool()
         pool.map(download, hd_or_sd)
         pool.close()
         pool.join()
+
 
     def get_folder_name(self):
         MOVE_TO_FOLDER = input('NAME: ')
@@ -131,10 +127,19 @@ class Animevost:
             print('Please type folder name, it is important for *renaming series*')
             exit(1)
 
+
     def remove_log(self):
+        """Remove log after closing driver
+
+        ErrorType: PermissionError: bla bla because it is being used by another process
+        """
         elog = 'geckodriver.log'
         if exists(elog):
-            remove(elog)
+            try:
+                remove(elog)
+            except Exception as e:
+                print('Error', e)
+
 
     def get_series_url(self):
         """
@@ -145,9 +150,11 @@ class Animevost:
         # /51175323/switching-back-to-parent-frame-after-its-no-longer-in-dom-in-selenium
         # /26566799/how-to-wait-until-the-page-is-loaded-with-selenium-for-python
         # /47790010/how-to-use-expected-conditions-to-check-for-an-element-in-python-selenium
+
         sd = []
         hd = []
         series = self.driver.find_elements_by_xpath(self.base_path)
+
         for idx in range(len(series)):
             try:
                 # click seri button
@@ -158,6 +165,7 @@ class Animevost:
                 # num = 2, 1 for good internet and 1 for javascript to changing url
                 # dublicating urls bcz of small time for javascript
                 sleep(1)
+
                 # wait iframe
                 WebDriverWait(self.driver, self.delay).until(
                     EC.frame_to_be_available_and_switch_to_it(
@@ -170,32 +178,34 @@ class Animevost:
                         self.driver.find_element_by_xpath("html/body/div/a")
                     )
                 )
+
                 seri = self.driver.find_elements_by_xpath("html/body/div/a")
                 sd.append(seri[0].get_attribute('href'))
                 hd.append(seri[1].get_attribute('href'))
+
                 # remove iframe
                 self.driver.switch_to.default_content()
             except Exception as e:
                 print('E: ', e)
                 self.driver.close()
         self.driver.close()
+
         # catch dublicate urls before downloading
         # before debug script be sure that your browser not showing you 1 url in each series_button
-        db = [h.split('.')[-2].split('/')[-1] for h in hd]
         # not tested
+        db = [h.split('.')[-2].split('/')[-1] for h in hd]
         if len(db) != len(set(db)):
-            print('Group to download: length > {}, unique length > {}\n'.format(
-                    len(db), len(set(db))
-                ), db)
+            print(f'len(Gd): > {len(db)}, len(U) > {len(set(db))}\n', db)
             m = input('\nAny dublicates [y/n]: ').lower()
             if m == 'y':
                 exit(1)
+
         # run multi download, if not hd then sd
         try:
             self.get_multiprocessing(hd)
         except Exception:
             self.get_multiprocessing(sd)
-        self.remove_log()
+
 
     def get_data(self, source):
         """
@@ -215,23 +225,24 @@ class Animevost:
                 nseri = {v:k for k, v in seri.items()}
                 return nseri
 
+
     def get_page_source(self):
         """
         Get page_(site)_source and unblock series_url by clicking series_button
         """
         page_ready = False
-        print('in run')
         while not page_ready:
-            print('in while')
             try:
                 r = self.driver.page_source
-            except Exception:
-                print('in get_page_source EXCEPTION')
+            except Exception as e:
+                print('waiting page sourse', e)
                 sleep(1)
             else:
                 page_ready = True
                 self.get_series_url()
+                self.remove_log()
                 nseri = self.get_data(bs(r, 'lxml'))
+
                 # down_seri = "2147397125.mp4", glog = ["2147397125.mp4", ...]
                 for down_seri in glob(self.AP4):
                     # nseri = {"2147397125.mp4": 1 серия, ... }
