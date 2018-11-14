@@ -3,6 +3,8 @@
 
 # __author__ = 'kira@-築城院 真鍳'
 
+from requests import get
+import logging #-------------------------------------------------#
 from os import mkdir, chdir, rename, remove, getcwd, environ #---#
 from sys import argv, platform #---------------------------------#
 from bs4 import BeautifulSoup as bs #----------------------------#
@@ -29,6 +31,25 @@ After downloading all i wanted was rename downloaded series,
 If any problems with Selenium (or just download series like me)\
     use func self.get_data to rename series_id to series_name
 """
+
+verbs = True if '-v' in argv else False
+
+logging.basicConfig(
+    format='[%(asctime)s] --%(levelname)s-- %(message)s',
+    level=logging.INFO,
+    datefmt="%I:%M:%S"
+)
+
+def desc(doc):
+    def verbose(func):
+        def inner(*args, **kwargs):
+            if verbs:
+                fname = func.__name__
+                space = ' ' * (20 - len(fname))
+                logging.info(f"FUNC @{fname}{space}:{doc}")
+            return func(*args, **kwargs)
+        return inner
+    return verbose
 
 
 class Animevost:
@@ -61,7 +82,7 @@ class Animevost:
         self.get_folder_name()
         self.run_driver()
 
-
+    @desc('Move geckodriver* to executable path if exists')
     def first_run(self):
         """Remove nah needed driver
 
@@ -69,7 +90,7 @@ class Animevost:
             *geckodriver*       for linux64
             *geckodriver.exe*   for win64
 
-        kk i'm running win32 in 64x machine (platform == win32)
+        kk i'm running win32 in 64x machine
         """
 
         def windows():
@@ -92,12 +113,11 @@ class Animevost:
 
             rmtree(d)
 
-
+    @desc(f'FORpage {argv[1][20:]}')
     def run_driver(self):
         """
         Ubuntu and Windows wants *geckodriver* in executable path
         Kali finding *geckodriver* without executable path
-        Here's one more thing, you need Firefox browser if wanna run Firefox geckodriver
         """
         try:
             self.driver = webdriver.Firefox()
@@ -107,14 +127,14 @@ class Animevost:
             self.driver.close()
             exit(1)
 
-
+    @desc('First run for downloading HD, second for SD format')
     def get_multiprocessing(self, hd_or_sd):
         pool = Pool()
         pool.map(download, hd_or_sd)
         pool.close()
         pool.join()
 
-
+    @desc('Creating new directory and changing dir to it')
     def get_folder_name(self):
         MOVE_TO_FOLDER = input('NAME: ')
         MOVE_TO_FOLDER = MOVE_TO_FOLDER.replace(' ', '_')   # A "B" -> A_"B"
@@ -127,30 +147,29 @@ class Animevost:
             print('Please type folder name, it is important for *renaming series*')
             exit(1)
 
-
+    @desc('Removing logfile that creating geckodriver')
     def remove_log(self):
         """Remove log after closing driver
 
-        ErrorType: PermissionError: bla bla because it is being used by another process
+        ErrorType in Windows: PermissionError: bla bla because it is being used by another process
         """
         elog = 'geckodriver.log'
         if exists(elog):
             try:
                 remove(elog)
             except Exception as e:
-                print('Error', e)
+                print('\nError', e)
 
-
+    @desc('Parsing webpage for getting HD and SD')
     def get_series_url(self):
         """
         Get list of series_url (get buttons)
         Get url and keep in list
-        """
         # stackoverflow.com/questions
         # /51175323/switching-back-to-parent-frame-after-its-no-longer-in-dom-in-selenium
         # /26566799/how-to-wait-until-the-page-is-loaded-with-selenium-for-python
         # /47790010/how-to-use-expected-conditions-to-check-for-an-element-in-python-selenium
-
+        """
         sd = []
         hd = []
         series = self.driver.find_elements_by_xpath(self.base_path)
@@ -188,25 +207,18 @@ class Animevost:
             except Exception as e:
                 print('E: ', e)
                 self.driver.close()
+
         self.driver.close()
-
-        # catch dublicate urls before downloading
-        # before debug script be sure that your browser not showing you 1 url in each series_button
-        # not tested
-        db = [h.split('.')[-2].split('/')[-1] for h in hd]
-        if len(db) != len(set(db)):
-            print(f'len(Gd): > {len(db)}, len(U) > {len(set(db))}\n', db)
-            m = input('\nAny dublicates [y/n]: ').lower()
-            if m == 'y':
-                exit(1)
-
         # run multi download, if not hd then sd
         try:
             self.get_multiprocessing(hd)
         except Exception:
             self.get_multiprocessing(sd)
+        finally:
+            # print verbose in new line
+            print()
 
-
+    @desc('Parsing webpage for getting data of series_id')
     def get_data(self, source):
         """
         js_data to json_data
@@ -225,32 +237,35 @@ class Animevost:
                 nseri = {v:k for k, v in seri.items()}
                 return nseri
 
-
+    @desc('Entry pointer, make series_id readable')
     def get_page_source(self):
         """
         Get page_(site)_source and unblock series_url by clicking series_button
+        Before debug script be sure that your browser not showing you 1 url in each series_button
         """
         page_ready = False
         while not page_ready:
             try:
                 r = self.driver.page_source
             except Exception as e:
-                print('waiting page sourse', e)
+                print('Waiting page source:', e)
                 sleep(1)
             else:
                 page_ready = True
                 self.get_series_url()
                 self.remove_log()
+                # nseri = {"2147397125.mp4": 1 серия, ... }
                 nseri = self.get_data(bs(r, 'lxml'))
-
                 # down_seri = "2147397125.mp4", glog = ["2147397125.mp4", ...]
                 for down_seri in glob(self.AP4):
-                    # nseri = {"2147397125.mp4": 1 серия, ... }
-                    rename(down_seri, "{}{}".format(nseri[down_seri.split('.')[0]], self.MP4))
+                    # don't rename dublicates
+                    down_id = down_seri.split('.')[0]
+                    if down_id in nseri.keys():
+                        rename(down_seri, f"{nseri[down_id].replace(' ', '_')}{self.MP4}")
 
 
 if __name__ == "__main__":
-    if len(argv) == 2:
+    if len(argv) >= 2:
         anime = Animevost()
         anime.get_page_source()
     else:
